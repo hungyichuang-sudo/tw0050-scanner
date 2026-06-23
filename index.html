@@ -81,7 +81,7 @@ th.c-tk,td.c-tk{position:sticky;left:40px;z-index:2;background:inherit;text-alig
   border-right:1px solid var(--bd)}
 thead th.c-tk{z-index:4;background:#0a0f16}
 td.tk{font-weight:700;color:var(--txt);letter-spacing:.02em}
-.nm{color:var(--dim);font-size:10px;font-weight:400;font-family:var(--sans);display:block;margin-top:-1px;
+.nm{color:var(--mut);font-size:10px;font-weight:400;font-family:var(--sans);display:block;margin-top:-1px;
   max-width:130px;overflow:hidden;text-overflow:ellipsis}
 
 .pos{color:var(--pos)} .neg{color:var(--neg)} .mut{color:var(--mut)} .dim{color:var(--dim)}
@@ -166,21 +166,9 @@ footer b{color:var(--txt);font-weight:600}
 </header>
 
 <div class="wrap">
-  <div class="controls">
-    <span class="ctl-label">回看 N 日</span>
-    <div class="seg" id="winseg"></div>
-    <span class="ctl-label">顯示</span>
-    <div class="seg alt" id="viewseg">
-      <button data-v="30" class="on">Top 30</button>
-      <button data-v="all">全部</button>
-    </div>
-    <input class="search" id="search" placeholder="篩選代號 / 公司…" autocomplete="off">
-    <div class="count" id="count"></div>
-  </div>
-
   <section class="charts">
     <div class="charthead">
-      <div class="ct">EV Top-3 即時K線 <span class="sub">/ Top-3 by Expectancy</span> · 回看 N=<b id="cwin">90</b> 日（隨上方窗口連動）</div>
+      <div class="ct">EV Top-3 即時K線 <span class="sub">/ Top-3 by Expectancy</span> · 回看 N=<b id="cwin">90</b> 日（隨下方窗口連動）</div>
       <div class="right">
         <span class="ctl-label">K線型態</span>
         <div class="seg" id="candleseg">
@@ -206,6 +194,18 @@ footer b{color:var(--txt);font-weight:600}
     <div id="libwarn" class="libwarn" style="display:none">⚠️ 圖表函式庫載入失敗（離線環境）——連網後重新開啟即可顯示 K 線。</div>
     <div class="cnote">K 線資料：Yahoo Finance 還原（adjusted）日線，與上表同源，快照 as-of <b id="casof"></b>，非逐筆即時報價；要更新請按「立即更新」或等待盤中自動更新。<b>Heikin-Ashi</b> 為平滑型態（HA<sub>close</sub>=(O+H+L+C)/4、HA<sub>open</sub>=前一根HA中點），非真實成交價，僅供判讀趨勢延續。SMA100/200 一律以<b>實際收盤</b>計算。台股代號採 yfinance <code>.TW</code> 後綴。</div>
   </section>
+
+  <div class="controls">
+    <span class="ctl-label">回看 N 日</span>
+    <div class="seg" id="winseg"></div>
+    <span class="ctl-label">顯示</span>
+    <div class="seg alt" id="viewseg">
+      <button data-v="30" class="on">Top 30</button>
+      <button data-v="all">全部</button>
+    </div>
+    <input class="search" id="search" placeholder="篩選代號 / 公司…" autocomplete="off">
+    <div class="count" id="count"></div>
+  </div>
 
   <div class="tablewrap">
     <table id="tbl">
@@ -337,10 +337,13 @@ function spark(vals, slope){
 }
 
 function fmt(v,dec){ return (v>=0?'':'') + v.toFixed(dec); }
+// Display-only: strip the yfinance exchange suffix (.TW/.TWO) from a ticker.
+// NEVER use this for data lookups — OHLC keys and row.t keep the full suffix.
+function disp(t){ return String(t).replace(/\.(TW|TWO)$/i,''); }
 function cell(c,row){
   const k=c[0], kind=c[3], v=row[k];
   if(kind==='rank'){ return `<td class="c-rank">${row.rank}</td>`; }
-  if(kind==='tk'){ return `<td class="c-tk tk">${row.t}<span class="nm">${row.name}</span></td>`; }
+  if(kind==='tk'){ return `<td class="c-tk tk">${disp(row.t)}<span class="nm">${row.name}</span></td>`; }
   if(kind==='spark'){ return `<td class="spark">${spark(row.spark,row.evslope)}</td>`; }
   if(kind==='price'){ return `<td class="last">${v.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})}</td>`; }
   let cls='', txt;
@@ -461,7 +464,7 @@ function renderCharts(){
     if(n) slot.chart.timeScale().setVisibleLogicalRange({from:Math.max(0,n-140),to:n+3});
     const last=n?b[n-1][4]:r.last, prev=n>1?b[n-2][4]:last, chg=(last/prev-1)*100;
     document.getElementById('mhd'+i).innerHTML=
-      '<span class="rkb">#'+(i+1)+'</span><span class="tk">'+r.t+'</span><span class="nm">'+(r.name||'')+'</span>'+
+      '<span class="rkb">#'+(i+1)+'</span><span class="tk">'+disp(r.t)+'</span><span class="nm">'+(r.name||'')+'</span>'+
       '<span class="px">'+last.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})+'</span>'+
       '<span class="chg '+(chg>=0?'pos':'neg')+'">'+(chg>=0?'+':'')+chg.toFixed(2)+'%</span>'+
       '<span class="evb">EV <b class="'+(r.ev>0?'pos':'neg')+'">'+(r.ev>0?'+':'')+r.ev.toFixed(3)+'%</b> · 漲幅 <b class="'+(r.ret>0?'pos':'neg')+'">'+(r.ret>0?'+':'')+r.ret.toFixed(1)+'%</b> · 收盤對收盤</span>';
