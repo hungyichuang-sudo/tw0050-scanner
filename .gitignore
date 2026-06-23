@@ -1,0 +1,4 @@
+__pycache__/
+*.pyc
+docs/scanner.json
+.DS_Store
