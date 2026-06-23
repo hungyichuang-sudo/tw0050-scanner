@@ -127,6 +127,46 @@ def fetch_constituents(url=None):
 
 
 # ----------------------------------------------------------------------------
+# Repair yfinance split/adjustment discontinuities.
+# Taiwan equities have a +/-10% daily price limit, so any single-day close ratio
+# beyond [1/(1+t), 1+t] is impossible via normal trading: it is a data or
+# corporate-action artifact (e.g. a phantom/mis-signed split, as happened to
+# 6669 on 2026-06-22 where auto_adjust divided all history by ~3). We re-stitch
+# by scaling each earlier segment up/down onto the later, real, live price level
+# -- anchoring to the most recent quote and removing fake jumps while preserving
+# every legitimate daily return. This keeps the chart continuous AND stops a
+# bogus single-day move from dominating EV/Sharpe and the ranking.
+# ----------------------------------------------------------------------------
+SPLIT_BREAK_THRESH = 0.25     # >25% single-day move = artifact (Taiwan limit is 10%)
+
+
+def repair_adjustment_breaks(df, thresh=SPLIT_BREAK_THRESH):
+    """Return (clean_df, n_breaks). Scales pre-break bars onto the post-break
+    (most-recent) price level so artificial split discontinuities vanish."""
+    if len(df) < 2:
+        return df, 0
+    c = df['Close'].values.astype(float)
+    n = len(c)
+    scale = np.ones(n)
+    cum = 1.0
+    nb = 0
+    for j in range(n - 1, 0, -1):           # j = bar the jump goes into
+        if c[j - 1] > 0:
+            r = c[j] / c[j - 1]
+            if r > 1 + thresh or r < 1.0 / (1 + thresh):
+                cum *= r                     # lift everything before j by this gap
+                nb += 1
+        scale[j - 1] = cum
+    if nb == 0:
+        return df, 0
+    out = df.copy()
+    for col in ('Open', 'High', 'Low', 'Close'):
+        if col in out.columns:
+            out[col] = out[col].values.astype(float) * scale
+    return out, nb
+
+
+# ----------------------------------------------------------------------------
 # Fetch (yfinance). Returns {ticker: DataFrame[Open,High,Low,Close]} ascending.
 # ----------------------------------------------------------------------------
 def fetch_ohlc(tickers, start=None):
@@ -136,6 +176,7 @@ def fetch_ohlc(tickers, start=None):
     df = yf.download(tickers, start=start, interval='1d', auto_adjust=True,
                      progress=False, threads=True, group_by='ticker')
     out = {}
+    repaired = []
     for tk in tickers:
         try:
             sub = df[tk] if isinstance(df.columns, pd.MultiIndex) else df
@@ -144,7 +185,13 @@ def fetch_ohlc(tickers, start=None):
         sub = sub.dropna(subset=['Open', 'High', 'Low', 'Close'])
         if len(sub) == 0:
             continue
-        out[tk] = sub[['Open', 'High', 'Low', 'Close']].copy()
+        sub = sub[['Open', 'High', 'Low', 'Close']].copy()
+        sub, nb = repair_adjustment_breaks(sub)
+        if nb:
+            repaired.append(tk)
+        out[tk] = sub
+    if repaired:
+        print('repaired split/adjustment artifacts in: %s' % ', '.join(repaired))
     return out
 
 
